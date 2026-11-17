@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Buscador de empleo</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --card: #fffdf8;
+      --ink: #1d1a16;
+      --muted: #5f574e;
+      --line: #e4d9c8;
+      --accent: #0d6b4f;
+      --accent-ink: #ffffff;
+      --encaja: #0d6b4f;
+      --posible: #8a5a12;
+      --flojo: #8d3d32;
+      --soft: #f7f1e6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    header {
+      padding: 28px 20px 8px;
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+    h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.03em; }
+    header p { margin: 0; color: var(--muted); max-width: 720px; line-height: 1.45; }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 18px 20px 48px;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 18px;
+      align-items: start;
+    }
+    .panel, .tarjeta {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+    }
+    .panel { padding: 16px; }
+    label { display: block; font-size: 13px; font-weight: 650; margin: 12px 0 6px; }
+    textarea, input, select {
+      width: 100%;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font: inherit;
+      color: inherit;
+    }
+    textarea { min-height: 220px; resize: vertical; line-height: 1.4; }
+    .fila { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    .fila input { width: auto; }
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .primario { background: var(--accent); color: var(--accent-ink); width: 100%; margin-top: 14px; }
+    .secundario, .texto-btn { background: var(--soft); color: var(--ink); }
+    .texto-btn { padding: 6px 10px; font-size: 13px; }
+    details { margin-top: 14px; }
+    summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+    .ayuda { color: var(--muted); font-size: 12px; line-height: 1.4; margin: 6px 0 0; }
+    #estado { min-height: 1.3em; color: var(--muted); font-size: 14px; margin: 0 0 10px; }
+    .fuentes { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .chip {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--muted);
+    }
+    .chip.mal { color: var(--flojo); }
+    .tarjeta { padding: 14px 16px; margin-bottom: 12px; }
+    .tope { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    h2 { font-size: 18px; margin: 0; line-height: 1.3; }
+    .meta { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+    .nivel {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .encaja { color: var(--encaja); }
+    .posible { color: var(--posible); }
+    .flojo { color: var(--flojo); }
+    .motivos { margin: 8px 0; padding-left: 18px; }
+    .motivos li { margin: 3px 0; }
+    .extracto { color: var(--muted); font-size: 14px; line-height: 1.4; }
+    .acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    a.enlace {
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: none;
+    }
+    pre {
+      white-space: pre-wrap;
+      font-family: Consolas, "Segoe UI", monospace;
+      background: #1d1a16;
+      color: #f6f1e8;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .aviso {
+      background: #fff4e8;
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 13px;
+      margin: 8px 0;
+    }
+    .vacio { color: var(--muted); padding: 12px 2px; }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Buscador de empleo</h1>
+    <p>Busca avisos en las fuentes que se pueden consultar, los compara con tu CV y arma un texto plano para postularte. Solo usa lo que ya está escrito en tu CV: no agrega herramientas, empleos ni estudios.</p>
+  </header>
+  <main>
+    <section class="panel">
+      <label for="cv">Tu CV</label>
+      <textarea id="cv" placeholder="Pegá el CV completo: nombre, contacto, experiencia, estudios y herramientas."></textarea>
+      <label for="consulta">Puesto o palabras</label>
+      <input id="consulta" placeholder="Si lo dejás vacío, se arma con tu CV">
+      <label for="lugar">Lugar</label>
+      <input id="lugar" value="Argentina">
+      <div class="fila">
+        <input id="remotos" type="checkbox">
+        <label for="remotos" style="margin:0">Ocultar también los presenciales de Argentina</label>
+      </div>
+      <button id="buscar" class="primario">Buscar y filtrar</button>
+      <p class="ayuda">Los avisos de otros países entran solo si son online. Jooble sigue trayendo también los de Argentina. Adzuna no publica Argentina: si cambiás el país, busca puestos remote.</p>
+      <details>
+        <summary>Claves opcionales</summary>
+        <label for="gemini">Clave de Gemini</label>
+        <input id="gemini" type="password" autocomplete="off" placeholder="Mejora la redacción del CV">
+        <label for="adzuna-id">Adzuna App ID</label>
+        <input id="adzuna-id" type="password" autocomplete="off">
+        <label for="adzuna-key">Adzuna App Key</label>
+        <input id="adzuna-key" type="password" autocomplete="off">
+        <label for="adzuna-pais">País de Adzuna</label>
+        <select id="adzuna-pais">
+          <option value="ar">Argentina</option>
+          <option value="mx">México</option>
+          <option value="cl">Chile</option>
+          <option value="co">Colombia</option>
+          <option value="br">Brasil</option>
+          <option value="es">España</option>
+          <option value="us">Estados Unidos</option>
+          <option value="gb">Reino Unido</option>
+        </select>
+        <label for="jooble">Clave de Jooble</label>
+        <input id="jooble" type="password" autocomplete="off">
+        <button id="guardar" class="secundario" style="margin-top:12px">Guardar claves</button>
+        <p id="claves-estado" class="ayuda"></p>
+      </details>
+    </section>
+    <section>
+      <p id="estado">Pegá tu CV y buscá.</p>
+      <div id="fuentes" class="fuentes"></div>
+      <div id="lista"></div>
+      <h2 style="margin:22px 0 8px;font-size:18px">Listos para postular</h2>
+      <p class="ayuda">Cada vez que armes un CV, el link, el CV y la propuesta quedan acá y en esta computadora.</p>
+      <div id="listos"></div>
+    </section>
+  </main>
+  <script>
+    const cv = document.querySelector("#cv");
+    const consulta = document.querySelector("#consulta");
+    const lugar = document.querySelector("#lugar");
+    const remotos = document.querySelector("#remotos");
+    const estado = document.querySelector("#estado");
+    const fuentes = document.querySelector("#fuentes");
+    const lista = document.querySelector("#lista");
+    const buscarBtn = document.querySelector("#buscar");
+
+    function texto(el, valor) {
+      el.textContent = valor || "";
+    }
+
+    async function cargar() {
+      const r = await fetch("/api/estado");
+      const data = await r.json();
+      cv.value = data.cv || "";
+      consulta.value = data.consulta || "";
+      lugar.value = data.lugar || "Argentina";
+      remotos.checked = !!data.solo_remotos;
+      document.querySelector("#adzuna-pais").value = data.adzuna_pais || "ar";
+      const partes = [];
+      if (data.claves.gemini) partes.push("Gemini guardada");
+      if (data.claves.adzuna) partes.push("Adzuna guardada");
+      if (data.claves.jooble) partes.push("Jooble guardada");
+      texto(document.querySelector("#claves-estado"), partes.join(" · ") || "Sin claves. La búsqueda y el CV igual funcionan.");
+    }
+
+    document.querySelector("#guardar").addEventListener("click", async () => {
+      const r = await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gemini_key: document.querySelector("#gemini").value,
+          adzuna_app_id: document.querySelector("#adzuna-id").value,
+          adzuna_app_key: document.querySelector("#adzuna-key").value,
+          adzuna_pais: document.querySelector("#adzuna-pais").value,
+          jooble_key: document.querySelector("#jooble").value
+        })
+      });
+      if (!r.ok) {
+        texto(document.querySelector("#claves-estado"), "No se pudieron guardar.");
+        return;
+      }
+      document.querySelector("#gemini").value = "";
+      document.querySelector("#adzuna-id").value = "";
+      document.querySelector("#adzuna-key").value = "";
+      document.querySelector("#jooble").value = "";
+      await cargar();
+    });
+
+    function nivelTexto(nivel) {
+      if (nivel === "encaja") return "Encaja";
+      if (nivel === "posible") return "Posible";
+      return "Flojo";
+    }
+
+    function copiar(valor, boton) {
+      navigator.clipboard.writeText(valor).then(() => {
+        const anterior = boton.textContent;
+        boton.textContent = "Copiado";
+        setTimeout(() => { boton.textContent = anterior; }, 1200);
+      });
+    }
+
+    function tarjeta(item) {
+      const art = document.createElement("article");
+      art.className = "tarjeta";
+      const tope = document.createElement("div");
+      tope.className = "tope";
+      const h2 = document.createElement("h2");
+      texto(h2, item.titulo);
+      const nivel = document.createElement("div");
+      nivel.className = "nivel " + item.nivel;
+      texto(nivel, nivelTexto(item.nivel) + " · " + item.puntaje);
+      tope.append(h2, nivel);
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const datos = [item.empresa, item.fuente, item.lugar, item.fecha, item.salario].filter(Boolean);
+      if (item.remoto === true) datos.push("remoto");
+      if (item.remoto === false) datos.push("presencial");
+      texto(meta, datos.join(" · "));
+      const ul = document.createElement("ul");
+      ul.className = "motivos";
+      (item.motivos || []).forEach((motivo) => {
+        const li = document.createElement("li");
+        texto(li, motivo);
+        ul.append(li);
+      });
+      const extracto = document.createElement("p");
+      extracto.className = "extracto";
+      texto(extracto, item.extracto);
+      const acciones = document.createElement("div");
+      acciones.className = "acciones";
+      const link = document.createElement("a");
+      link.className = "enlace";
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Abrir aviso";
+      const adaptar = document.createElement("button");
+      adaptar.className = "secundario";
+      adaptar.textContent = "Armar CV y propuesta";
+      acciones.append(link, adaptar);
+      const panel = document.createElement("div");
+      adaptar.addEventListener("click", async () => {
+        adaptar.disabled = true;
+        adaptar.textContent = "Armando…";
+        panel.replaceChildren();
+        try {
+          const r = await fetch("/api/adaptar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: item.id, cv: cv.value })
+          });
+          const data = await r.json();
+          if (!r.ok) throw new Error(data.error || "No se pudo armar.");
+          pintarAdaptado(panel, data);
+        } catch (error) {
+          const p = document.createElement("p");
+          p.className = "aviso";
+          texto(p, error.message);
+          panel.append(p);
+        } finally {
+          adaptar.disabled = false;
+          adaptar.textContent = "Armar CV y propuesta";
+        }
+      });
+      art.append(tope, meta, ul, extracto, acciones, panel);
+      return art;
+    }
+
+    function pintarAdaptado(panel, data) {
+      panel.replaceChildren();
+      const nota = document.createElement("p");
+      nota.className = "ayuda";
+      texto(nota, data.con_ia
+        ? "Redactado con IA a partir de tu CV. Se descartó cualquier habilidad que no estuviera en tu texto."
+        : "Ordenado a partir de tu CV, sin agregar datos." + (data.aviso_ia ? " La IA no respondió y se usó esta versión." : ""));
+      panel.append(nota);
+      if ((data.palabras_sin_respaldo || []).length) {
+        const aviso = document.createElement("div");
+        aviso.className = "aviso";
+        texto(aviso, "El aviso pide esto y tu CV no lo respalda, así que no se agregó: " + data.palabras_sin_respaldo.join(", ") + ".");
+        panel.append(aviso);
+      }
+      const cvPre = document.createElement("pre");
+      texto(cvPre, data.cv_texto);
+      const propPre = document.createElement("pre");
+      texto(propPre, data.propuesta || "");
+      const acciones = document.createElement("div");
+      acciones.className = "acciones";
+      const copiarCv = document.createElement("button");
+      copiarCv.className = "texto-btn";
+      copiarCv.textContent = "Copiar CV";
+      copiarCv.addEventListener("click", () => copiar(data.cv_texto, copiarCv));
+      const copiarProp = document.createElement("button");
+      copiarProp.className = "texto-btn";
+      copiarProp.textContent = "Copiar propuesta";
+      copiarProp.addEventListener("click", () => copiar(data.propuesta || "", copiarProp));
+      const link = document.createElement("a");
+      link.className = "enlace";
+      link.href = data.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Postularme en el aviso";
+      acciones.append(copiarCv, copiarProp, link);
+      const tituloCv = document.createElement("p");
+      tituloCv.className = "ayuda";
+      texto(tituloCv, "CV adaptado");
+      const tituloProp = document.createElement("p");
+      tituloProp.className = "ayuda";
+      texto(tituloProp, "Propuesta para este puesto");
+      panel.append(tituloCv, cvPre, tituloProp, propPre, acciones);
+      anotarListo(data);
+    }
+
+    function filaLista(item) {
+      const art = document.createElement("article");
+      art.className = "tarjeta";
+      const h2 = document.createElement("h2");
+      texto(h2, item.titulo || "Aviso");
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      texto(meta, [item.empresa, item.fuente, item.cuando].filter(Boolean).join(" · "));
+      const acciones = document.createElement("div");
+      acciones.className = "acciones";
+      const link = document.createElement("a");
+      link.className = "enlace";
+      link.href = item.url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Abrir postulación";
+      acciones.append(link);
+      if (item.cv_texto) {
+        const bcv = document.createElement("button");
+        bcv.className = "texto-btn";
+        bcv.textContent = "Copiar CV";
+        bcv.addEventListener("click", () => copiar(item.cv_texto, bcv));
+        const bpr = document.createElement("button");
+        bpr.className = "texto-btn";
+        bpr.textContent = "Copiar propuesta";
+        bpr.addEventListener("click", () => copiar(item.propuesta || "", bpr));
+        acciones.append(bcv, bpr);
+      }
+      art.append(h2, meta, acciones);
+      return art;
+    }
+
+    function anotarListo(item) {
+      const caja = document.querySelector("#listos");
+      const previo = Array.from(caja.children).find((nodo) => nodo.dataset.url === item.url);
+      if (previo) previo.remove();
+      const fila = filaLista(item);
+      fila.dataset.url = item.url || "";
+      caja.prepend(fila);
+    }
+
+    async function cargarPostulaciones() {
+      const r = await fetch("/api/postulaciones");
+      const data = await r.json();
+      const caja = document.querySelector("#listos");
+      caja.replaceChildren();
+      (data.postulaciones || []).forEach((item) => caja.append(filaLista(item)));
+    }
+
+    buscarBtn.addEventListener("click", async () => {
+      buscarBtn.disabled = true;
+      texto(estado, "Buscando en las fuentes públicas. Puede tardar un poco.");
+      fuentes.replaceChildren();
+      lista.replaceChildren();
+      try {
+        const r = await fetch("/api/buscar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            cv: cv.value,
+            consulta: consulta.value,
+            lugar: lugar.value,
+            solo_remotos: remotos.checked
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "La búsqueda falló.");
+        const resumen = document.createElement("span");
+        texto(estado, (data.mensaje ? data.mensaje + " " : "") + "Se revisaron " + data.revisados + " avisos. Consulta: " + data.consulta + ".");
+        (data.fuentes || []).forEach((fuente) => {
+          const chip = document.createElement("span");
+          chip.className = "chip" + (fuente.error ? " mal" : "");
+          texto(chip, fuente.nombre + ": " + (fuente.error ? fuente.error : fuente.cantidad));
+          fuentes.append(chip);
+        });
+        if (!(data.resultados || []).length) {
+          const p = document.createElement("p");
+          p.className = "vacio";
+          texto(p, "No llegaron avisos. Revisá la conexión y volvé a buscar.");
+          lista.append(p);
+        } else {
+          data.resultados.forEach((item) => lista.append(tarjeta(item)));
+        }
+      } catch (error) {
+        texto(estado, error.message);
+      } finally {
+        buscarBtn.disabled = false;
+      }
+    });
+
+    cargar();
+    cargarPostulaciones();
+  </script>
+</body>
+</html>
