@@ -1,5 +1,7 @@
+import base64
 import json
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -533,6 +535,9 @@ def adaptar_local(cv, aviso):
 def _respaldado(fragmento, cv):
     if not fragmento or not fragmento.strip():
         return False
+    for numero in re.findall(r"\d{3,}", fragmento):
+        if numero not in cv:
+            return False
     propias = set(extraer_habilidades(cv))
     for habilidad in extraer_habilidades(fragmento):
         if habilidad not in propias:
@@ -561,16 +566,21 @@ def _filtrar_habilidades_ia(lista, cv, aviso_texto):
     return limpias
 
 
-def _gemini(prompt, clave, modelo):
+def _gemini(partes, clave, modelo, json_mode=True):
+    if isinstance(partes, str):
+        partes = [{"text": partes}]
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
         + urllib.parse.quote(modelo)
         + ":generateContent?key="
         + urllib.parse.quote(clave)
     )
+    config = {"temperature": 0.2}
+    if json_mode:
+        config["responseMimeType"] = "application/json"
     cuerpo = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json"},
+        "contents": [{"parts": partes}],
+        "generationConfig": config,
     }
     data = json.dumps(cuerpo).encode("utf-8")
     req = urllib.request.Request(
@@ -579,10 +589,59 @@ def _gemini(prompt, clave, modelo):
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=45) as respuesta:
+    try:
+        respuesta = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as exc:
+        if exc.code in (400, 401, 403):
+            raise RuntimeError("Gemini rechazó la clave. Revisala y volvé a guardarla.") from exc
+        if exc.code == 429:
+            raise RuntimeError("Gemini llegó al límite de uso. Probá de nuevo más tarde.") from exc
+        raise RuntimeError(f"Gemini no pudo responder ({exc.code}).") from exc
+    with respuesta:
         payload = json.loads(respuesta.read().decode("utf-8", "replace"))
-    partes = payload["candidates"][0]["content"]["parts"]
-    return "\n".join(p.get("text", "") for p in partes)
+    candidatos = payload.get("candidates") or []
+    if not candidatos:
+        raise RuntimeError("Gemini no devolvió texto.")
+    salida = candidatos[0].get("content", {}).get("parts") or []
+    return "\n".join(p.get("text", "") for p in salida)
+
+
+def transcribir_cv(imagenes, clave, modelo):
+    partes = [{
+        "text": (
+            "Transcribí el CV de las imágenes.\n"
+            "Copiá únicamente el texto que se lee y conservá los saltos de línea.\n"
+            "No corrijas, no completes y no inventes nombre, fechas, estudios, empleos ni herramientas.\n"
+            "Si una palabra no se lee, omitila.\n"
+            "Respondé solo el texto del CV."
+        )
+    }]
+    for blob, mime in imagenes[:4]:
+        partes.append({
+            "inlineData": {
+                "mimeType": mime,
+                "data": base64.b64encode(blob).decode("ascii"),
+            }
+        })
+    modelos = [modelo or "gemini-2.5-flash", "gemini-2.5-flash", "gemini-2.0-flash"]
+    vistos = []
+    ultimo = None
+    texto = ""
+    for nombre in modelos:
+        if nombre in vistos:
+            continue
+        vistos.append(nombre)
+        try:
+            texto = _gemini(partes, clave, nombre, json_mode=False).strip()
+            break
+        except Exception as exc:
+            ultimo = exc
+            texto = ""
+    texto = re.sub(r"^```[a-z]*", "", texto).strip()
+    texto = re.sub(r"```$", "", texto).strip()
+    if len(texto) < 40:
+        raise ultimo or RuntimeError("Gemini no pudo leer el archivo.")
+    return texto
 
 
 def _leer_json_ia(texto):
@@ -601,17 +660,21 @@ def mejorar_con_ia(cv, aviso, base, clave, modelo):
         f"{aviso.get('titulo', '')}\n{aviso.get('empresa', '')}\n{aviso.get('descripcion', '')}",
         4000,
     )
-    prompt = f"""Reescribí el CV para este aviso. Respondé solo JSON.
+    prompt = f"""Redactá un CV nuevo, en texto plano, para que un filtro ATS lo lea. Respondé solo JSON.
 
-Reglas:
+Normas del CV:
+- Texto simple, sin tablas, columnas, íconos, gráficos ni encabezados de diseño.
+- Oraciones cortas. Una idea por viñeta.
+- El resumen nombra el puesto del aviso solo con capacidades que el CV original ya demuestra.
+- En habilidades, listá las herramientas del CV que también aparecen en el aviso, y después el resto de las que el CV ya nombra.
+- En experiencia, reescribí los hechos del CV con las mismas palabras del aviso cuando describen algo que ya hizo.
 - Usá únicamente hechos que ya están en el CV.
-- No inventes empleos, fechas, estudios, idiomas, herramientas ni logros.
-- No agregues una habilidad del aviso si el CV no la menciona, ni siquiera un equivalente que no esté escrito.
-- Podés ordenar y redactar de nuevo para usar las palabras del aviso cuando el CV ya demuestra esa misma capacidad.
-- No incluyas la sección de estudios: se agrega aparte.
-- Español, texto plano.
+- No inventes empleos, empresas, fechas, estudios, idiomas, cargos, logros ni herramientas.
+- No agregues una habilidad del aviso si el CV no la menciona, ni un equivalente que no esté escrito.
+- No incluyas contacto ni estudios: se agregan aparte.
+- Español.
 
-CV:
+CV ORIGINAL:
 {recortar(cv, 7000)}
 
 AVISO:

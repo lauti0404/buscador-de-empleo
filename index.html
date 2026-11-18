@@ -134,12 +134,17 @@
 <body>
   <header>
     <h1>Buscador de empleo</h1>
-    <p>Busca avisos en las fuentes que se pueden consultar, los compara con tu CV y arma un texto plano para postularte. Solo usa lo que ya está escrito en tu CV: no agrega herramientas, empleos ni estudios.</p>
+    <p>Busca avisos en las fuentes que se pueden consultar, los compara con el archivo de tu CV y arma un texto plano para postularte. Solo usa lo que ya está en ese archivo: no agrega herramientas, empleos ni estudios.</p>
   </header>
   <main>
     <section class="panel">
-      <label for="cv">Tu CV</label>
-      <textarea id="cv" placeholder="Pegá el CV completo: nombre, contacto, experiencia, estudios y herramientas."></textarea>
+      <label for="archivo">Archivo del CV</label>
+      <input id="archivo" type="file" accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp,application/pdf">
+      <p id="archivo-estado" class="ayuda">PDF, DOCX, TXT o una foto. El texto se lee solo. Si el PDF es una imagen, la clave de Gemini copia lo que se ve, sin completarlo.</p>
+      <label for="cv">Texto leído</label>
+      <textarea id="cv" placeholder="Aparece al subir el archivo. Corregí una línea solo si la lectura se comió una palabra."></textarea>
+      <button id="ats" class="secundario" type="button">Generar CV para filtros ATS</button>
+      <p class="ayuda">Con la clave de Gemini, redacta un CV nuevo en texto plano: secciones claras, sin columnas ni gráficos, y solo con datos del archivo. Si escribís un puesto arriba, usa esas palabras cuando ya están en tu CV.</p>
       <label for="consulta">Puesto o palabras</label>
       <input id="consulta" placeholder="Si lo dejás vacío, se arma con tu CV">
       <label for="lugar">Lugar</label>
@@ -153,7 +158,7 @@
       <details>
         <summary>Claves opcionales</summary>
         <label for="gemini">Clave de Gemini</label>
-        <input id="gemini" type="password" autocomplete="off" placeholder="Mejora la redacción del CV">
+        <input id="gemini" type="password" autocomplete="off" placeholder="Lee un CV en foto y redacta el CV para ATS">
         <label for="adzuna-id">Adzuna App ID</label>
         <input id="adzuna-id" type="password" autocomplete="off">
         <label for="adzuna-key">Adzuna App Key</label>
@@ -176,7 +181,8 @@
       </details>
     </section>
     <section>
-      <p id="estado">Pegá tu CV y buscá.</p>
+      <p id="estado">Subí el archivo del CV y buscá.</p>
+      <div id="resultado-ats"></div>
       <div id="fuentes" class="fuentes"></div>
       <div id="lista"></div>
       <h2 style="margin:22px 0 8px;font-size:18px">Listos para postular</h2>
@@ -322,8 +328,8 @@
       const nota = document.createElement("p");
       nota.className = "ayuda";
       texto(nota, data.con_ia
-        ? "Redactado con IA a partir de tu CV. Se descartó cualquier habilidad que no estuviera en tu texto."
-        : "Ordenado a partir de tu CV, sin agregar datos." + (data.aviso_ia ? " La IA no respondió y se usó esta versión." : ""));
+        ? "CV nuevo en texto plano para filtros ATS. Gemini lo redactó con tu archivo y se sacó cualquier dato que no estuviera ahí."
+        : "Ordenado a partir del archivo, sin agregar datos." + (data.aviso_ia ? " La IA no respondió y se usó esta versión." : ""));
       panel.append(nota);
       if ((data.palabras_sin_respaldo || []).length) {
         const aviso = document.createElement("div");
@@ -351,10 +357,11 @@
       link.target = "_blank";
       link.rel = "noopener";
       link.textContent = "Postularme en el aviso";
-      acciones.append(copiarCv, copiarProp, link);
+      acciones.append(copiarCv, copiarProp);
+      if ((data.url || "").startsWith("http")) acciones.append(link);
       const tituloCv = document.createElement("p");
       tituloCv.className = "ayuda";
-      texto(tituloCv, "CV adaptado");
+      texto(tituloCv, data.con_ia ? "CV para filtros ATS" : "CV ordenado");
       const tituloProp = document.createElement("p");
       tituloProp.className = "ayuda";
       texto(tituloProp, "Propuesta para este puesto");
@@ -378,7 +385,7 @@
       link.target = "_blank";
       link.rel = "noopener";
       link.textContent = "Abrir postulación";
-      acciones.append(link);
+      if ((item.url || "").startsWith("http")) acciones.append(link);
       if (item.cv_texto) {
         const bcv = document.createElement("button");
         bcv.className = "texto-btn";
@@ -410,6 +417,68 @@
       caja.replaceChildren();
       (data.postulaciones || []).forEach((item) => caja.append(filaLista(item)));
     }
+
+    function archivoABase64(archivo) {
+      return new Promise((resolver, rechazar) => {
+        const lector = new FileReader();
+        lector.onload = () => {
+          const carga = String(lector.result || "");
+          resolver(carga.slice(carga.indexOf(",") + 1));
+        };
+        lector.onerror = () => rechazar(new Error("No se pudo leer el archivo."));
+        lector.readAsDataURL(archivo);
+      });
+    }
+
+    document.querySelector("#archivo").addEventListener("change", async (evento) => {
+      const archivo = evento.target.files && evento.target.files[0];
+      if (!archivo) return;
+      const avisoArchivo = document.querySelector("#archivo-estado");
+      texto(estado, "Leyendo el archivo…");
+      texto(avisoArchivo, "Leyendo " + archivo.name + "…");
+      try {
+        const contenido = await archivoABase64(archivo);
+        const r = await fetch("/api/cv", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre: archivo.name, contenido })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "No se pudo leer el archivo.");
+        cv.value = data.cv || "";
+        texto(avisoArchivo, data.aviso || ("Listo. Se leyeron " + cv.value.length + " caracteres de " + archivo.name + "."));
+        texto(estado, "CV leído. Ya podés buscar o generar el CV para filtros ATS.");
+      } catch (error) {
+        texto(avisoArchivo, error.message);
+        texto(estado, error.message);
+      }
+    });
+
+    document.querySelector("#ats").addEventListener("click", async () => {
+      const boton = document.querySelector("#ats");
+      const caja = document.querySelector("#resultado-ats");
+      boton.disabled = true;
+      boton.textContent = "Redactando…";
+      caja.replaceChildren();
+      try {
+        const r = await fetch("/api/cv-ats", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cv: cv.value, consulta: consulta.value })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || "No se pudo redactar el CV.");
+        pintarAdaptado(caja, data);
+      } catch (error) {
+        const p = document.createElement("p");
+        p.className = "aviso";
+        texto(p, error.message);
+        caja.append(p);
+      } finally {
+        boton.disabled = false;
+        boton.textContent = "Generar CV para filtros ATS";
+      }
+    });
 
     buscarBtn.addEventListener("click", async () => {
       buscarBtn.disabled = true;

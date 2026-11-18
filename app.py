@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 import sys
@@ -8,8 +9,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from cvarchivo import leer_archivo
 from fuentes import buscar_fuentes
-from motor import adaptar, armar_consulta, forma_visible, puntuar
+from motor import adaptar, armar_consulta, forma_visible, puntuar, transcribir_cv
 
 ROOT = Path(__file__).resolve().parent
 DATOS = ROOT / "datos"
@@ -112,8 +114,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def _json(self):
         largo = int(self.headers.get("Content-Length") or 0)
-        if largo > 2_000_000:
-            raise ValueError("El pedido es demasiado grande.")
+        if largo > 12_000_000:
+            raise ValueError("El archivo es demasiado grande.")
         raw = self.rfile.read(largo) if largo else b""
         if not raw:
             return {}
@@ -167,6 +169,12 @@ class Handler(BaseHTTPRequestHandler):
         if ruta == "/api/adaptar":
             self._adaptar(data)
             return
+        if ruta == "/api/cv":
+            self._subir_cv(data)
+            return
+        if ruta == "/api/cv-ats":
+            self._cv_ats(data)
+            return
         self._enviar(404, {"error": "No existe."})
 
     def _guardar_config(self, data):
@@ -185,7 +193,7 @@ class Handler(BaseHTTPRequestHandler):
     def _buscar(self, data):
         cv = str(data.get("cv") or "").strip()
         if len(cv) < 40:
-            self._enviar(400, {"error": "Pegá tu CV completo. Con un par de líneas no se puede saber si un puesto te sirve."})
+            self._enviar(400, {"error": "Subí el archivo de tu CV. Con un par de líneas no se puede saber si un puesto te sirve."})
             return
         guardar_cv(cv)
         config = cargar_config()
@@ -284,6 +292,92 @@ class Handler(BaseHTTPRequestHandler):
             return
         guardar_cv(cv)
         resultado = adaptar(cv, job, cargar_config())
+        guardar_postulacion(resultado)
+        self._enviar(200, resultado)
+
+    def _subir_cv(self, data):
+        nombre = str(data.get("nombre") or "")
+        try:
+            crudo = base64.b64decode(str(data.get("contenido") or ""), validate=False)
+        except Exception:
+            self._enviar(400, {"error": "No pude leer el archivo."})
+            return
+        if not crudo:
+            self._enviar(400, {"error": "El archivo está vacío."})
+            return
+        try:
+            texto, imagenes = leer_archivo(nombre, crudo)
+        except ValueError as exc:
+            self._enviar(400, {"error": str(exc)})
+            return
+        aviso = ""
+        if len(texto.strip()) < 80:
+            config = cargar_config()
+            clave = (config.get("gemini_key") or "").strip()
+            if not clave or not imagenes:
+                self._enviar(
+                    400,
+                    {
+                        "error": (
+                            "Ese archivo no tiene texto para copiar. "
+                            "Si es una foto o un PDF escaneado, guardá la clave de Gemini y volvé a subirlo: "
+                            "la IA copia lo que se lee, sin completarlo."
+                        )
+                    },
+                )
+                return
+            try:
+                texto = transcribir_cv(
+                    imagenes,
+                    clave,
+                    (config.get("gemini_modelo") or "gemini-2.5-flash"),
+                )
+            except Exception as exc:
+                self._enviar(400, {"error": str(exc)[:240]})
+                return
+            aviso = "El archivo era una imagen. Gemini copió el texto visible, sin agregar datos."
+        texto = texto.strip()
+        if len(texto) < 40:
+            self._enviar(400, {"error": "No alcancé a leer un CV en ese archivo."})
+            return
+        guardar_cv(texto)
+        self._enviar(200, {"cv": texto, "aviso": aviso})
+
+    def _cv_ats(self, data):
+        cv = str(data.get("cv") or "").strip() or cargar_cv()
+        if len(cv) < 40:
+            self._enviar(400, {"error": "Primero subí el archivo del CV."})
+            return
+        config = cargar_config()
+        if not (config.get("gemini_key") or "").strip():
+            self._enviar(
+                400,
+                {
+                    "error": (
+                        "Guardá la clave de Gemini. Con esa clave se redacta un CV nuevo en texto plano "
+                        "para los filtros ATS, usando solo el archivo original."
+                    )
+                },
+            )
+            return
+        guardar_cv(cv)
+        consulta = str(data.get("consulta") or config.get("consulta") or "").strip()
+        aviso = {
+            "titulo": consulta or "el puesto buscado",
+            "empresa": "",
+            "descripcion": consulta,
+            "url": "",
+            "fuente": "",
+        }
+        resultado = adaptar(cv, aviso, config)
+        if not resultado.get("con_ia"):
+            self._enviar(
+                400,
+                {"error": resultado.get("aviso_ia") or "Gemini no pudo redactar el CV."},
+            )
+            return
+        resultado["titulo"] = "CV para filtros ATS"
+        resultado["url"] = "local://cv-ats"
         guardar_postulacion(resultado)
         self._enviar(200, resultado)
 

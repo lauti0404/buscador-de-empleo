@@ -23,5 +23,10 @@ if not defined PYEXE (
   pause
   exit /b 1
 )
+"%PYEXE%" -c "import fitz" 1>nul 2>nul
+if errorlevel 1 (
+  echo Instalando el lector de PDF...
+  "%PYEXE%" -m pip install -r "%~dp0requirements.txt"
+)
 "%PYEXE%" -u "%~dp0app.py"
 if errorlevel 1 pause

@@ -47,7 +47,7 @@ set "APPDIR=%~dp0"
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path ([Environment]::GetFolderPath('Desktop')) 'Buscador de empleo.lnk')); $s.TargetPath=(Join-Path $env:APPDIR 'iniciar.bat'); $s.WorkingDirectory=$env:APPDIR.TrimEnd('\'); $s.Description='Buscador de empleo'; $s.Save()"
 echo Acceso directo creado en el escritorio.
 echo.
-echo Se abre el buscador. Pega tu CV en la pantalla. Las claves de Adzuna y Jooble son opcionales y cada persona usa las suyas.
+echo Se abre el buscador. Subi el archivo de tu CV. Las claves son opcionales y cada persona usa las suyas.
 echo.
 call "%~dp0iniciar.bat"
 exit /b 0
